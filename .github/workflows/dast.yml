@@ -1,0 +1,53 @@
+name: DAST (ZAP) scan
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  dast:
+    name: Run DAST (ZAP)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17 (for ZAP)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get -y install wget unzip wkhtmltopdf
+
+      - name: Download and extract ZAP
+        run: |
+          wget https://github.com/zaproxy/zaproxy/releases/download/v2.16.1/ZAP_2.16.1_Linux.tar.gz
+          mkdir -p zap
+          tar -xvf ZAP_2.16.1_Linux.tar.gz -C zap
+
+      - name: Run ZAP quick scan + convert to PDF
+        id: run-zap
+        continue-on-error: true                     # allow failure (similar to allow_failure: true)
+        run: |
+          set -e || true
+          cd zap/ZAP_2.16.1
+          chmod +x zap.sh
+          # run the quick scan (replace URL with your target)
+          ./zap.sh -cmd -quickurl http://testphp.vulnweb.com/ -quickout ../zap_report.html || true
+          cd ..
+          # convert html to pdf (may require additional libs on some runners)
+          wkhtmltopdf zap_report.html zap_report.pdf || true
+
+      - name: Upload ZAP PDF artifact
+        if: always()                                # ensure artifact is uploaded even if previous step failed
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-report
+          path: zap/zap_report.pdf
+          retention-days: 7                         # equivalent to expire_in: 1 week
